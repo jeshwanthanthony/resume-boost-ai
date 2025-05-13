@@ -1,23 +1,18 @@
 require('dotenv').config();
 const { OpenAI } = require('openai');
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const path = require('path');
-const fs = require('fs');
-const multer = require('multer');
 const express = require('express');
-const app = express();
-const PORT = process.env.PORT || 3000;
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const fs = require('fs');
+const path = require('path');
 
+const app = express();
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
-
-// Set up multer to store uploaded files
 const upload = multer({ dest: 'uploads/' });
 
 // Routes
@@ -28,17 +23,14 @@ app.get('/', (req, res) => {
 app.post('/analyze', upload.single('resume'), (req, res) => {
   const jobDesc = req.body.jobdesc;
   const resumeFilePath = req.file.path;
+  const ext = path.extname(req.file.originalname).toLowerCase();
 
-  fs.readFile(resumeFilePath, 'utf8', async (err, resumeText) => {
-    if (err) {
-      return res.status(500).send('Error reading resume file.');
-    }
+  const handleAnalysis = async (resumeText) => {
+    const prompt = `Here is a resume:\n${resumeText}\n\nHere is a job description:\n${jobDesc}\n\nHow can this resume be improved to better match the job description? Give specific, actionable suggestions.`;
 
     try {
-      const prompt = `Here is a resume:\n${resumeText}\n\nHere is a job description:\n${jobDesc}\n\nHow can this resume be improved to better match the job description? Give specific, actionable suggestions.`;
-
       const chatResponse = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo", // or "gpt-3.5-turbo"
+        model: "gpt-3.5-turbo",
         messages: [{ role: "user", content: prompt }],
       });
 
@@ -132,8 +124,8 @@ app.post('/analyze', upload.single('resume'), (req, res) => {
       <ul>
         ${suggestions
           .split(/\n+/)
-          .filter(p => p.trim().match(/^\d+\.|\•/)) // filter bullet/numbered lines
-          .slice(0, 5) // show only top 5
+          .filter(p => p.trim().match(/^\d+\.|\•/))
+          .slice(0, 5)
           .map(s => `<li>${s.replace(/^\d+\.\s*/, '')}</li>`)
           .join('')}
       </ul>
@@ -144,15 +136,31 @@ app.post('/analyze', upload.single('resume'), (req, res) => {
 </body>
 </html>
 `);
-
-    } catch (apiError) {
-      console.error(apiError);
+    } catch (err) {
+      console.error(err);
       res.status(500).send('OpenAI API error.');
     }
-  });
+  };
+
+  if (ext === '.pdf') {
+    const pdfBuffer = fs.readFileSync(resumeFilePath);
+    pdfParse(pdfBuffer)
+      .then(data => handleAnalysis(data.text))
+      .catch(err => {
+        console.error(err);
+        res.status(500).send('Error reading PDF file.');
+      });
+  } else {
+    fs.readFile(resumeFilePath, 'utf8', (err, resumeText) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).send('Error reading resume file.');
+      }
+      handleAnalysis(resumeText);
+    });
+  }
 });
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-
