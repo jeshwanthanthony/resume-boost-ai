@@ -26,11 +26,31 @@ app.post('/analyze', upload.single('resume'), (req, res) => {
   const ext = path.extname(req.file.originalname).toLowerCase();
 
   const handleAnalysis = async (resumeText) => {
-    const prompt = `Here is a resume:\n${resumeText}\n\nHere is a job description:\n${jobDesc}\n\nHow can this resume be improved to better match the job description? Give specific, actionable suggestions.`;
+    const prompt = `
+You are a resume coach AI. Your job is to help someone improve their resume based on a job description.
+
+Here is the resume:
+${resumeText}
+
+Here is the job description:
+${jobDesc}
+
+🔎 Your task:
+
+Give the top 5 specific improvement suggestions. For each one:
+
+1. First, **quote a line or phrase from the resume** that could be improved (wrap it in double quotes).
+2. Then, suggest how it can be rewritten, expanded, or made more relevant to the job.
+3. Structure each like this:
+
+• "Quoted resume text" → [explanation of what to improve and how]
+
+Use bullet points. Do not repeat irrelevant lines. Focus on precision.
+`;
 
     try {
       const chatResponse = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
+        model: "gpt-3.5-turbo-1106",
         messages: [{ role: "user", content: prompt }],
       });
 
@@ -122,13 +142,14 @@ app.post('/analyze', upload.single('resume'), (req, res) => {
     <div class="section">
       <h2>AI Suggestions:</h2>
       <ul>
-        ${suggestions
-          .split(/\n+/)
-          .filter(p => p.trim().match(/^\d+\.|\•/))
-          .slice(0, 5)
-          .map(s => `<li>${s.replace(/^\d+\.\s*/, '')}</li>`)
-          .join('')}
+    ${suggestions
+    .split(/\n+/)
+    .filter(p => p.trim().match(/^\d+\.|\•/))
+    .slice(0, 5)
+    .map(s => `<li>${s.replace(/^\d+\.\s*/, '')}</li>`)
+    .join('')}
       </ul>
+
     </div>
 
     <a href="/" class="button">← Back</a>
